@@ -37,7 +37,7 @@
 
 1. Импортируйте репозиторий в Vercel.
 2. В настройках **Environment Variables** добавьте:
-   - `VITE_GEMINI_API_KEY`: ваш API ключ от Google AI Studio.
+   - `VITE_GROQ_API_KEY`: ваш API ключ от Groq Cloud.
 3. Нажмите **Deploy**.
 
 ---
