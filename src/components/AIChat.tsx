@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { GoogleGenAI } from "@google/genai";
+import OpenAI from "openai";
 import { Send, Loader2 } from "lucide-react";
 import { motion } from "motion/react";
 
 export function AIChat() {
   const { t } = useTranslation();
-  const [messages, setMessages] = useState<{ role: "user" | "sage", content: string }[]>([]);
+  const [messages, setMessages] = useState<{ role: "user" | "sage"; content: string }[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -28,22 +28,38 @@ export function AIChat() {
     setIsLoading(true);
 
     try {
-      const ai = new GoogleGenAI(import.meta.env.VITE_GEMINI_API_KEY || "");
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: userMsg,
-        config: {
-          systemInstruction: t('chat.systemPrompt'),
-          temperature: 0.7,
-        }
+      const client = new OpenAI({
+        apiKey: import.meta.env.VITE_OPENAI_API_KEY || "",
+        dangerouslyAllowBrowser: true,
       });
 
-      if (response.text) {
-        setMessages(prev => [...prev, { role: "sage", content: response.text }]);
+      // Build conversation history for context
+      const history = messages.map(m => ({
+        role: m.role === "user" ? "user" as const : "assistant" as const,
+        content: m.content
+      }));
+
+      const response = await client.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: t('chat.systemPrompt') },
+          ...history,
+          { role: "user", content: userMsg },
+        ],
+        temperature: 0.7,
+        max_tokens: 800,
+      });
+
+      const reply = response.choices[0]?.message?.content;
+      if (reply) {
+        setMessages(prev => [...prev, { role: "sage", content: reply }]);
       }
     } catch (error) {
-      console.error("Failed to fetch response:", error);
-      setMessages(prev => [...prev, { role: "sage", content: "Кешіріңіз, қазір жауап бере алмаймын. (Ошибка связи с мудрецом)" }]);
+      console.error("OpenAI error:", error);
+      setMessages(prev => [
+        ...prev,
+        { role: "sage", content: "Кешіріңіз, қазір жауап бере алмаймын. (Ошибка связи с мудрецом)" }
+      ]);
     } finally {
       setIsLoading(false);
     }
@@ -66,7 +82,7 @@ export function AIChat() {
           <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-[url('https://www.transparenttextures.com/patterns/parchment.png')]">
             {messages.length === 0 && (
               <div className="text-center text-[#5C3A21]/60 italic mt-20">
-                Задайте вопрос мудрецу...
+                {t('chat.placeholder')}...
               </div>
             )}
 
@@ -78,7 +94,7 @@ export function AIChat() {
                 className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 <div
-                  className={`max-w-[80%] p-4 rounded-2xl ${msg.role === 'user'
+                  className={`max-w-[80%] p-4 rounded-2xl whitespace-pre-wrap ${msg.role === 'user'
                       ? 'bg-[#5C3A21] text-[#F5DEB3] rounded-br-none'
                       : 'bg-[#E6C280] text-[#3E2723] rounded-bl-none border border-[#8B5A2B]/20 font-serif'
                     }`}
@@ -87,6 +103,7 @@ export function AIChat() {
                 </div>
               </motion.div>
             ))}
+
             {isLoading && (
               <div className="flex justify-start">
                 <div className="bg-[#E6C280] text-[#3E2723] p-4 rounded-2xl rounded-bl-none flex items-center gap-2">
@@ -105,7 +122,7 @@ export function AIChat() {
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                onKeyDown={(e) => e.key === 'Enter' && !isLoading && handleSend()}
                 placeholder={t('chat.placeholder')}
                 className="flex-1 bg-[#F5DEB3] border-2 border-[#8B5A2B]/50 rounded-xl px-4 py-3 text-[#3E2723] placeholder:text-[#8B5A2B]/50 focus:outline-none focus:border-[#5C3A21] font-serif"
               />

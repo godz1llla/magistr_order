@@ -34,8 +34,11 @@ export function LandingView({ onStart }: LandingViewProps) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1, delay: 0.3 }}
         >
-          <p className="text-lg md:text-2xl text-gray-300 font-light mb-12 max-w-2xl mx-auto leading-relaxed">
+          <p className="text-lg md:text-2xl text-gray-300 font-light mb-6 max-w-2xl mx-auto leading-relaxed">
             {t('landing.subtitle')}
+          </p>
+          <p className="text-md md:text-xl text-[#D2B48C]/80 font-serif italic mb-12 max-w-3xl mx-auto leading-relaxed border-l-4 border-[#8B5A2B] pl-6 py-2">
+            {t('landing.powerQuote')}
           </p>
         </motion.div>
 
