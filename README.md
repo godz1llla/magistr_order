@@ -36,8 +36,6 @@
 Проект полностью оптимизирован для деплоя на Vercel:
 
 1. Импортируйте репозиторий в Vercel.
-2. В настройках **Environment Variables** добавьте:
-   - `VITE_GEMINI_API_KEY`: ваш API ключ от Google AI Studio.
 3. Нажмите **Deploy**.
 
 ---

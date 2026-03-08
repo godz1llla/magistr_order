@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import OpenAI from "openai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Send, Loader2 } from "lucide-react";
 import { motion } from "motion/react";
 
@@ -22,43 +22,55 @@ export function AIChat() {
   const handleSend = async () => {
     if (!input.trim()) return;
 
+    // Очистка ключа от лишних символов
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY?.replace(/['"\s]/g, "");
+
+    if (!apiKey) {
+      console.error("Ключ API не найден!");
+      return;
+    }
+
     const userMsg = input.trim();
     setMessages(prev => [...prev, { role: "user", content: userMsg }]);
     setInput("");
     setIsLoading(true);
 
     try {
-      const client = new OpenAI({
-        apiKey: import.meta.env.VITE_OPENAI_API_KEY || "",
-        dangerouslyAllowBrowser: true,
+      const genAI = new GoogleGenerativeAI(apiKey);
+
+      // ИСПОЛЬЗУЕМ v1 - это исправляет ошибку 404 (Not Found)
+      const model = genAI.getGenerativeModel(
+        { model: "gemini-1.5-flash" },
+        { apiVersion: "v1" }
+      );
+
+      const systemPrompt = t('chat.systemPrompt') || "Сен — қазақтың дана жырауысың. Даналықпен жауап бер.";
+
+      // Формируем историю. 
+      // Важно: в v1/v1beta история должна строго чередоваться user-model
+      const chat = model.startChat({
+        history: messages.map(m => ({
+          role: m.role === "user" ? "user" : "model",
+          parts: [{ text: m.content }],
+        })),
       });
 
-      // Build conversation history for context
-      const history = messages.map(m => ({
-        role: m.role === "user" ? "user" as const : "assistant" as const,
-        content: m.content
-      }));
+      // Если это первый вопрос, склеиваем его с системной ролью
+      const fullPrompt = messages.length === 0
+        ? `${systemPrompt}\n\nСұрақ: ${userMsg}`
+        : userMsg;
 
-      const response = await client.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: t('chat.systemPrompt') },
-          ...history,
-          { role: "user", content: userMsg },
-        ],
-        temperature: 0.7,
-        max_tokens: 800,
-      });
+      const result = await chat.sendMessage(fullPrompt);
+      const text = result.response.text();
 
-      const reply = response.choices[0]?.message?.content;
-      if (reply) {
-        setMessages(prev => [...prev, { role: "sage", content: reply }]);
+      if (text) {
+        setMessages(prev => [...prev, { role: "sage", content: text }]);
       }
-    } catch (error) {
-      console.error("OpenAI error:", error);
+    } catch (error: any) {
+      console.error("Ошибка ИИ:", error);
       setMessages(prev => [
         ...prev,
-        { role: "sage", content: "Кешіріңіз, қазір жауап бере алмаймын. (Ошибка связи с мудрецом)" }
+        { role: "sage", content: "Кешіріңіз, ақылман қазір ой үстінде (Ошибка доступа)." }
       ]);
     } finally {
       setIsLoading(false);
@@ -66,77 +78,64 @@ export function AIChat() {
   };
 
   return (
-    <section className="min-h-screen py-24 bg-[#2C1E16] relative overflow-hidden flex items-center justify-center">
-      {/* Scroll Texture */}
-      <div className="absolute inset-0 opacity-30 bg-[url('https://www.transparenttextures.com/patterns/aged-paper.png')]" />
+    <section className="min-h-[80vh] py-12 bg-[#2C1E16] flex items-center justify-center p-4">
+      <div className="w-full max-w-4xl bg-[#F5DEB3] rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] border-4 border-[#8B5A2B] overflow-hidden flex flex-col h-[650px]">
+        {/* Заголовок */}
+        <div className="bg-[#8B5A2B] text-[#F5DEB3] p-5 text-center font-serif text-2xl border-b-4 border-[#5C3A21] shadow-lg">
+          {t('chat.title') || "Ақылманмен сұхбат"}
+        </div>
 
-      <div className="relative z-10 w-full max-w-4xl mx-auto px-4">
-        <div className="bg-[#F5DEB3] rounded-3xl shadow-2xl overflow-hidden border-4 border-[#8B5A2B] flex flex-col h-[600px]">
-
-          {/* Header */}
-          <div className="bg-[#8B5A2B] text-[#F5DEB3] p-6 text-center border-b-4 border-[#5C3A21]">
-            <h2 className="text-3xl font-serif">{t('chat.title')}</h2>
-          </div>
-
-          {/* Messages Area */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-[url('https://www.transparenttextures.com/patterns/parchment.png')]">
-            {messages.length === 0 && (
-              <div className="text-center text-[#5C3A21]/60 italic mt-20">
-                {t('chat.placeholder')}...
-              </div>
-            )}
-
-            {messages.map((msg, idx) => (
-              <motion.div
-                key={idx}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`max-w-[80%] p-4 rounded-2xl whitespace-pre-wrap ${msg.role === 'user'
-                      ? 'bg-[#5C3A21] text-[#F5DEB3] rounded-br-none'
-                      : 'bg-[#E6C280] text-[#3E2723] rounded-bl-none border border-[#8B5A2B]/20 font-serif'
-                    }`}
-                >
-                  {msg.content}
-                </div>
-              </motion.div>
-            ))}
-
-            {isLoading && (
-              <div className="flex justify-start">
-                <div className="bg-[#E6C280] text-[#3E2723] p-4 rounded-2xl rounded-bl-none flex items-center gap-2">
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  <span className="font-serif italic">Мудрец думает...</span>
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Input Area */}
-          <div className="p-4 bg-[#E6C280] border-t-2 border-[#8B5A2B]/30">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && !isLoading && handleSend()}
-                placeholder={t('chat.placeholder')}
-                className="flex-1 bg-[#F5DEB3] border-2 border-[#8B5A2B]/50 rounded-xl px-4 py-3 text-[#3E2723] placeholder:text-[#8B5A2B]/50 focus:outline-none focus:border-[#5C3A21] font-serif"
-              />
-              <button
-                onClick={handleSend}
-                disabled={isLoading || !input.trim()}
-                className="bg-[#8B5A2B] hover:bg-[#5C3A21] text-[#F5DEB3] px-6 py-3 rounded-xl transition-colors disabled:opacity-50 flex items-center gap-2"
-              >
-                <Send className="w-5 h-5" />
-                <span className="hidden sm:inline">{t('chat.send')}</span>
-              </button>
+        {/* Сообщения */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-[url('https://www.transparenttextures.com/patterns/parchment.png')] bg-[#F5DEB3]">
+          {messages.length === 0 && (
+            <div className="text-center text-[#8B5A2B]/50 font-serif italic py-20 text-xl">
+              Сұрақ қойыңыз, шырағым...
             </div>
-          </div>
+          )}
 
+          {messages.map((m, i) => (
+            <motion.div
+              initial={{ opacity: 0, x: m.role === 'user' ? 20 : -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              key={i}
+              className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            >
+              <div className={`p-5 rounded-2xl max-w-[85%] shadow-md whitespace-pre-wrap font-serif text-lg leading-relaxed ${m.role === 'user'
+                  ? 'bg-[#8B5A2B] text-[#F5DEB3] rounded-br-none'
+                  : 'bg-[#E6C280] text-[#3E2723] border border-[#8B5A2B]/20 rounded-bl-none shadow-[inner_0_2px_4px_rgba(0,0,0,0.1)]'
+                }`}>
+                {m.content}
+              </div>
+            </motion.div>
+          ))}
+
+          {isLoading && (
+            <div className="flex items-center gap-3 text-[#8B5A2B] font-serif italic px-2">
+              <Loader2 className="w-6 h-6 animate-spin" />
+              <span className="text-lg">Жырау толғануда...</span>
+            </div>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Поле ввода */}
+        <div className="p-4 bg-[#E6C280] border-t-2 border-[#8B5A2B]/30 shadow-[0_-10px_20px_rgba(0,0,0,0.05)]">
+          <div className="flex gap-3 bg-[#F5DEB3] p-2 rounded-2xl border-2 border-[#8B5A2B]/40 focus-within:border-[#8B5A2B] transition-colors">
+            <input
+              className="flex-1 p-3 bg-transparent outline-none text-[#3E2723] font-serif text-xl placeholder-[#8B5A2B]/40"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && !isLoading && handleSend()}
+              placeholder="Өз сауалыңызды жолдаңыз..."
+            />
+            <button
+              onClick={handleSend}
+              disabled={isLoading || !input.trim()}
+              className="bg-[#8B5A2B] text-[#F5DEB3] p-4 rounded-xl hover:bg-[#5C3A21] active:scale-95 transition-all shadow-md disabled:opacity-50"
+            >
+              <Send size={24} />
+            </button>
+          </div>
         </div>
       </div>
     </section>
